@@ -1,0 +1,20 @@
+{
+  "name": "datomic-client-js",
+  "version": "0.1.0",
+  "description": "",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "Casey Marshall",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "transit-js": "0.8.861",
+    "aws-sdk": "^2.599.0",
+    "uuid": "latest"
+  },
+  "devDependencies": {
+    "promise": "^8.0.3"
+  },
+  "main": "target/datomic.js"
+}
