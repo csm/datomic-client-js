@@ -1,8 +1,9 @@
 'use strict';
 
 let crypto = require('crypto');
-let transit = require('transit-js');
 let https = require('https');
+let tls = require('tls');
+let transit = require('transit-js');
 let uuid = require('uuid');
 
 Object.prototype.getState = function() { return this; };
@@ -257,6 +258,22 @@ function Client(spi) {
     this.spi = spi;
 }
 
+const transactorTrust = '-----BEGIN CERTIFICATE-----\n' +
+    'MIICTzCCAbigAwIBAgIETyWfxDANBgkqhkiG9w0BAQUFADBsMRAwDgYDVQQGEwdV\n' +
+    'bmtub3duMRAwDgYDVQQIEwdVbmtub3duMRAwDgYDVQQHEwdVbmtub3duMRAwDgYD\n' +
+    'VQQKEwdVbmtub3duMRAwDgYDVQQLEwdVbmtub3duMRAwDgYDVQQDEwdVbmtub3du\n' +
+    'MB4XDTEyMDEyOTE5MzYzNloXDTIyMDEyNjE5MzYzNlowbDEQMA4GA1UEBhMHVW5r\n' +
+    'bm93bjEQMA4GA1UECBMHVW5rbm93bjEQMA4GA1UEBxMHVW5rbm93bjEQMA4GA1UE\n' +
+    'ChMHVW5rbm93bjEQMA4GA1UECxMHVW5rbm93bjEQMA4GA1UEAxMHVW5rbm93bjCB\n' +
+    'nzANBgkqhkiG9w0BAQEFAAOBjQAwgYkCgYEA1E7f8OfsClwj9+pN2N0KbmZKt7+I\n' +
+    'xlRVNBldjaZfwjJEnea2pY9c9e+UveneuGugG2hOA/pICy3gmZyBTVUeXIOSdBEq\n' +
+    'CRvoJtk7FkmueWMY8ioZ0ygtSofTipPzYO9gDW032K3Z+bVmy9xj15K2aapRGeqF\n' +
+    'p38jQWVRdOoHJqsCAwEAATANBgkqhkiG9w0BAQUFAAOBgQDTX5KkZSY1gp6/+8/w\n' +
+    'vopGEFdwMt+CE8JTVlCh/xMTU5C3qxRqJNstP2IzhgdGKbl24nwafh8jUrC5EzDR\n' +
+    'CnQL0zx9KwImGqNGkszSimgfijxDRHDT6Ig15Bg07y4HxJgZNjxnIkNgjM7NgYzk\n' +
+    'QPBwyiyvf3HQDczNlFxUwVZVQQ==\n' +
+    '-----END CERTIFICATE-----';
+
 function sendWithRetry(httpRequest, requestContext, spi, timeout) {
     let signParams = spi.getSignParams();
     if (signParams == null) {
@@ -268,7 +285,8 @@ function sendWithRetry(httpRequest, requestContext, spi, timeout) {
         let signedRequest = signRequest(httpRequest, signParams);
         console.log('signed request: ' + JSON.stringify(signedRequest));
         signedRequest.timeout = timeout;
-        signedRequest.rejectUnauthorized = false; // todo, include client trust certs
+        signedRequest.ca = transactorTrust;
+        signedRequest.checkServerIdentity = function(_, __) {};
         return new Promise((resolve, reject) => {
             let req = https.request(signedRequest, (response) => {
                 response.bodyData = '';
