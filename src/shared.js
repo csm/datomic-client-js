@@ -1,5 +1,6 @@
 'use strict';
 
+let chans = require('./channel')
 let crypto = require('crypto');
 let https = require('https');
 let tls = require('tls');
@@ -229,7 +230,7 @@ Connection.prototype.log = function () {
 };
 
 Connection.prototype.q = function (m) {
-    return chunkedAsyncOp(this.client, this, transit.keyword('q'), this, m);
+    return this.client.chunkedAsyncOp(this, transit.keyword('q'), this, m);
 };
 
 Connection.prototype.sync = function (t) {
@@ -274,6 +275,41 @@ const transactorTrust = '-----BEGIN CERTIFICATE-----\n' +
     'QPBwyiyvf3HQDczNlFxUwVZVQQ==\n' +
     '-----END CERTIFICATE-----';
 
+function ExpBackoff(start, max, factor) {
+    this.value = start / factor;
+    this.factor = factor;
+    this.max = max;
+}
+
+ExpBackoff.prototype.backOff = function () {
+    let newValue = this.value * this.factor;
+    this.value = newValue;
+    if (newValue < this.max) {
+        return new Promise(resolve => {
+            setTimeout(() => { resolve(null); }, newValue);
+        });
+    } else {
+        return Promise.resolve(null);
+    }
+};
+
+function LinearBackoff(timeout, count) {
+    this.timeout = timeout;
+    this.count = count;
+}
+
+LinearBackoff.prototype.backOff = function() {
+    this.count = this.count - 1;
+    if (this.count < 0) {
+        let to = this.timeout;
+        return new Promise(resolve => {
+            setTimeout(() => { resolve(null); }, to);
+        });
+    } else {
+        return Promise.resolve(null);
+    }
+};
+
 function sendWithRetry(httpRequest, requestContext, spi, timeout) {
     let signParams = spi.getSignParams();
     if (signParams == null) {
@@ -281,7 +317,33 @@ function sendWithRetry(httpRequest, requestContext, spi, timeout) {
     } else {
         signParams = Promise.resolve(signParams);
     }
-    return signParams.then((signParams) => {
+    let uBackoff = new ExpBackoff(100, 400, 2);
+    let bBackoff = new LinearBackoff(10000, 6);
+    return doSendWithRetry(httpRequest, requestContext, spi, timeout, signParams, uBackoff, bBackoff);
+}
+
+const retriableCategories = ['cognitect.anomalies/unavailable', 'cognitect.anomalies/interrupted', 'cognitect.anomalies/fault'];
+const idempotentOps = [
+    'datomic.catalog/resolve-db',
+    'datomic.catalog/list-dbs',
+    'datoms',
+    'datomic.client.protocol/db-stats',
+    'datomic.client.protocol/index-range',
+    'datomic.client.protocol/next',
+    'datomic.client.protocol/pull',
+    'datomic.client.protocol/q',
+    'datomic.client.protocol/status',
+    'datomic.client.protocol/tx-range',
+    'datomic.client.protocol/with',
+    'datomic.client.protocol/with-db'
+];
+
+function retryAnom(category, op) {
+    return retriableCategories.indexOf(category) >= 0 && idempotentOps.indexOf(op) >= 0;
+}
+
+function doSendWithRetry(httpRequest, requestContext, spi, timeout, signParams, uBackoff, bBackoff) {
+    let execRequest = function(signParams) {
         let signedRequest = signRequest(httpRequest, signParams);
         console.log('signed request: ' + JSON.stringify(signedRequest));
         signedRequest.timeout = timeout;
@@ -297,6 +359,12 @@ function sendWithRetry(httpRequest, requestContext, spi, timeout) {
                     resolve(response);
                 });
             });
+            req.on('timeout', () => {
+                reject(new AnomalyError({
+                    'cognitect.anomalies/category': 'cognitect.anomalies/interrupted',
+                    'cognitect.anomalies/message': 'request timed out'
+                }))
+            });
             req.on('error', (error) => {
                 reject(error);
             });
@@ -305,9 +373,10 @@ function sendWithRetry(httpRequest, requestContext, spi, timeout) {
             }
             req.end();
         });
-    }).then((response) => {
+    };
+    let handleResponse = function(response) {
         console.log('http status: ' + response.statusCode + ' headers:' + JSON.stringify(response.headers) +
-          ' bodyData: ' + response.bodyData);
+            ' bodyData: ' + response.bodyData);
         let reader = transit.reader('json');
         let body = null;
         if (response.headers['content-type'] === 'application/transit+json') {
@@ -349,7 +418,36 @@ function sendWithRetry(httpRequest, requestContext, spi, timeout) {
             response.body = body;
             return response;
         }
-    });
+    };
+    let catchError = function(error) {
+        if (error instanceof AnomalyError) {
+            let cat = error.anomaly['cognitect.anomalies/category'];
+            if (cat === 'cognitect.anomalies/busy') {
+                bBackoff.backOff().then(() => {
+                    return doSendWithRetry(httpRequest, requestContext, spi, timeout, signParams, uBackoff, bBackoff);
+                });
+            } else if (cat === 'cognitect.anomalies/forbidden') {
+                return signParams.then((oldSignParams) => {
+                    return spi.refreshSignParams().then((newSignParams) => {
+                        if (newSignParams === oldSignParams) {
+                            throw error;
+                        } else {
+                            return doSendWithRetry(httpRequest, requestContext, spi, timeout, Promise.resolve(newSignParams), uBackoff, bBackoff);
+                        }
+                    });
+                });
+            } else if (retryAnom(cat, httpRequest.op)) {
+                uBackoff.backOff().then(() => {
+                    return doSendWithRetry(httpRequest, requestContext, spi, timeout, signParams, uBackoff, bBackoff);
+                });
+            } else {
+                throw error;
+            }
+        } else {
+            throw error;
+        }
+    };
+    return signParams.then(execRequest).then(handleResponse).catch(catchError);
 }
 
 const signedHeaders = ['content-type', 'host', 'x-amz-content-sha256', 'x-amz-date', 'x-amz-target'];
@@ -440,7 +538,7 @@ function toTitleCase(s) {
 }
 
 function camelCaseToKebabCase(s) {
-    s.split(/(?=[A-Z])/).map((x) => {return x.toLowerCase();}).join('-');
+    return s.split(/(?=[A-Z])/).map(x => x.toLowerCase()).join('-');
 }
 
 function keywordizeKey(k) {
@@ -457,14 +555,19 @@ function keywordizeKey(k) {
 
 const uuidPat = /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/;
 function jsToTransit(m) {
+    console.log('jsToTransit: ' + JSON.stringify(m));
     if (Array.isArray(m)) {
-        return m.map(jsToTransit());
+        return m.map(jsToTransit);
     } else if (m instanceof UUID) {
         return transit.uuid(m.rep);
     } else if (m instanceof BigInt) {
         return transit.bigInt(m.rep);
     } else if (m instanceof BigDec) {
         return transit.bigDec(m.rep);
+    } else if (m instanceof Db) {
+        return jsToTransit(m.toQueryArg());
+    } else if (transit.isTaggedValue(m) || transit.isKeyword(m) || transit.isSymbol(m)) {
+        return m;
     } else if (typeof m == 'object') {
         let ret = transit.map([]);
         for (let k in m) {
@@ -549,7 +652,7 @@ function clientResponseToApi(conn, op, requester, response) {
     }
 }
 
-function convertResponse(conn, op, requester, response, handler) {
+function updateState(conn, response) {
     let dbs = response.get(keyword('dbs'));
     if (conn != null) {
         if (dbs != null) {
@@ -560,18 +663,18 @@ function convertResponse(conn, op, requester, response, handler) {
             });
         }
     }
+}
+
+function convertResponse(conn, op, requester, response, handler) {
+    updateState(conn, response);
     return handler(conn, op, requester, response);
 }
 
 Client.prototype.asyncOp = function (conn, op, requester, m) {
     let requestContext = requester.getRequestContext();
-    console.log('request context: ' + JSON.stringify(requestContext));
     let request = apiToClientRequest(op, requestContext, m);
-    console.log('request: ' + JSON.stringify(request));
     let httpRequest = clientRequestToHttpRequest(request);
-    console.log('http request: ' + JSON.stringify(httpRequest));
     let routedHttpRequest = this.spi.addRouting(httpRequest);
-    console.log('routed request: ' + JSON.stringify(routedHttpRequest));
     m = m || {};
     return sendWithRetry(routedHttpRequest, requestContext, this.spi, m.timeout || 60000).then(
         (result) => {
@@ -580,8 +683,47 @@ Client.prototype.asyncOp = function (conn, op, requester, m) {
     );
 };
 
-Client.prototype.chunkedAsyncOp = function () {
-    throw new Error('not implemented');
+function convertChunkedResponse(conn, op, requester, response, handler, spi, requestContext, timeout, channel) {
+    updateState(conn, response);
+    let resp = handler(conn, op, requester, response);
+    channel.put(resp).then((result) => {
+        if (result) {
+            let nextOffset = response.get(keyword('next-offset'));
+            if (nextOffset != null) {
+                let nextRequest = Object.assign({}, requestContext,
+                    {
+                        op: keyword('next'),
+                        nextToken: response.get(keyword(nextToken)),
+                        offset: nextOffset,
+                        chunk: response.get(keyword(chunk))
+                    });
+                let nextClientRequest = apiToClientRequest(op, requester, nextRequest);
+                let nextRoutedRequest = spi.addRouting(nextClientRequest);
+                return sendWithRetry(nextRoutedRequest, requestContext, spi, timeout || 60000).then(
+                    (result) => {
+                        convertChunkedResponse(conn, 'next', requester, result, handler, spi, requestContext, timeout, channel);
+                    }
+                );
+            } else {
+                channel.close();
+            }
+        }
+    });
+}
+
+Client.prototype.chunkedAsyncOp = function (conn, op, requester, m) {
+    let channel = new chans.Channel();
+    let requestContext = requester.getRequestContext();
+    let request = apiToClientRequest(op, requestContext, m);
+    let httpRequest = clientRequestToHttpRequest(request);
+    let routedHttpRequest = this.spi.addRouting(httpRequest);
+    m = m || {};
+    return sendWithRetry(routedHttpRequest, requestContext, this.spi, m.timeout || 60000).then(
+        (result) => {
+            convertChunkedResponse(conn, op, requester, result.body, clientResponseToApi, this.spi, requestContext, m.timeout, channel);
+            return channel;
+        }
+    );
 };
 
 Client.prototype.connect = function(m) {
@@ -594,7 +736,8 @@ Client.prototype.connect = function(m) {
             (resolved) => {
                 return _this.asyncOp(null, keyword('status'), address, Object.assign({}, m, resolved)).then(
                     (status) => {
-                        return new Connection(_this, selectKeys(status, stateKeys), {dbName: m.dbName, databaseId: m.databaseId});
+                        console.log('connect done, resolved: ' + JSON.stringify(resolved) + ', status: ' + JSON.stringify(status));
+                        return new Connection(_this, selectKeys(status, stateKeys), {dbName: m.dbName, databaseId: status.databaseId});
                     }
                 );
             }
@@ -697,8 +840,8 @@ function apiToClientRequest(op, requester, m) {
         case ':q':
             request = transit.map([
                 transit.keyword('offset'), m.offset || 0,
-                transit.keyword('query'), m.query,
-                transit.keyword('args'), m.args,
+                transit.keyword('query'), jsToTransit(m.query),
+                transit.keyword('args'), jsToTransit(m.args),
                 transit.keyword('timeout'), m.timeout || 60000,
                 transit.keyword('limit'), m.limit || -1
             ]);
@@ -747,7 +890,7 @@ function apiToClientRequest(op, requester, m) {
     let requestContext = requester.getRequestContext();
     for (let k in requestContext) {
         if (requestContext.hasOwnProperty(k)) {
-            request.set(keyword(k), requestContext[k]);
+            request.set(keywordizeKey(k), requestContext[k]);
         }
     }
     return request;
@@ -779,7 +922,8 @@ function clientRequestToHttpRequest(request) {
     return {
         headers: headers,
         method: 'post',
-        body: encoded
+        body: encoded,
+        op: qualifiedOp
     };
 }
 
