@@ -229,6 +229,26 @@ Connection.prototype.log = function () {
     return {log: this.info['database-id']};
 };
 
+/**
+ * Query the database. Returns a promise that will yield a channel
+ * that can be read from to fetch results; in case of error, the promise
+ * will be rejected with the error.
+ *
+ * The argument map must contain the following keys:
+ *
+ * * query -- the query to run.
+ * * args -- arguments to the query.
+ *
+ * Also supports the following optional keys:
+ *
+ * * timeout -- query timeout in milliseconds.
+ * * offset -- the offset in the result set. Default 0.
+ * * limit -- the maximum number of results to read. Default 1000.
+ * * chunk -- the maximum number of results to return in each chunk. Default 1000.
+ *
+ * @param m The argument map.
+ * @returns The promise.
+ */
 Connection.prototype.q = function (m) {
     return this.client.chunkedAsyncOp(this, transit.keyword('q'), this, m);
 };
@@ -843,7 +863,8 @@ function apiToClientRequest(op, requester, m) {
                 transit.keyword('query'), jsToTransit(m.query),
                 transit.keyword('args'), jsToTransit(m.args),
                 transit.keyword('timeout'), m.timeout || 60000,
-                transit.keyword('limit'), m.limit || -1
+                transit.keyword('limit'), m.limit || 1000,
+                transit.keyword('chunk'), m.chunk || 1000
             ]);
             break;
         case ':tx-range':

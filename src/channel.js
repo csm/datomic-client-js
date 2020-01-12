@@ -2,6 +2,13 @@
 
 const MAX_PENDING = 1024;
 
+/**
+ * As asynchronous channel, possibly buffered.
+ *
+ * @constructor Takes either a capacity argument (a number) or no arguments.
+ *   The channel will have the given capacity if specified; otherwise returns
+ *   an unbuffered channel.
+ */
 function Channel() {
     switch (arguments.length) {
         case 0:
@@ -17,10 +24,19 @@ function Channel() {
     this.closed = false;
 }
 
+/**
+ * Tell if this channel is closed.
+ *
+ * @returns {boolean} True if closed.
+ */
 Channel.prototype.isClosed = function() {
     return this.closed;
-}
+};
 
+/**
+ * Closes this channel. This channel will not accept any more
+ * puts, and takes will only consume puts already enqueued.
+ */
 Channel.prototype.close = function() {
     this.closed = true;
     this.producers.forEach(p => {
@@ -28,6 +44,14 @@ Channel.prototype.close = function() {
     });
 };
 
+/**
+ * Take a value from the channel. Returns a promise that will
+ * yield the value read once a corresponding put call is made.
+ *
+ * Returns a promise that yields null if the channel is closed.
+ *
+ * @returns {Promise<never>|Promise<unknown>}
+ */
 Channel.prototype.take = function() {
     if (this.producers.length > 0) {
         let producer = this.producers.shift();
@@ -94,10 +118,26 @@ function doPut(chan, value, error) {
     }
 }
 
+/**
+ * Put a value on the channel. Returns a promise that will yield
+ * a boolean value when the put has completed. The promise will
+ * always yield true unless the channel is closed.
+ *
+ * @param val The value to put on the channel.
+ * @returns The promise.
+ */
 Channel.prototype.put = function(val) {
     return doPut(this, val, null);
 };
 
+/**
+ * Put an error on the channel. Returns a promise that will yield
+ * a boolean value when the put has completed. The promise will
+ * always yield true unless the channel is closed.
+ *
+ * @param err The error to put on the channel.
+ * @returns The promise.
+ */
 Channel.prototype.error = function(err) {
     return doPut(this, null, err);
 };
