@@ -1,5 +1,7 @@
 # datomic-client-js
 
+[![npm version](https://badge.fury.io/js/datomic-client-js.svg)](https://badge.fury.io/js/datomic-client-js)
+
 Work in progress!
 
 A JavaScript (node, maybe browser) client for [Datomic](https://datomic.com)
