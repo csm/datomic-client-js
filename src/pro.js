@@ -10,7 +10,7 @@ function routingMap(endpoint) {
     return {
         headers: {host: host},
         scheme: "https",
-        host: host,
+        hostname: host,
         port: port,
         uri: '/'
     };
@@ -34,6 +34,10 @@ Spi.prototype.getSignParams = function() {
 
 Spi.prototype.refreshSignParams = function() {
     return Promise.resolve(this.signingMap);
+};
+
+Spi.prototype.getAgent = function() {
+    return null;
 };
 
 function createSpi(args) {

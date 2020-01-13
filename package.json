@@ -10,8 +10,9 @@
   "license": "Apache-2.0",
   "dependencies": {
     "transit-js": "0.8.861",
-    "aws-sdk": "^2.599.0",
-    "uuid": "latest"
+    "aws-sdk": "2.599.0",
+    "uuid": "latest",
+    "socks-proxy-agent": "4.0.2"
   },
   "devDependencies": {
     "promise": "^8.0.3"

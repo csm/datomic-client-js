@@ -9,21 +9,26 @@ function makeSpi(args) {
     switch (args.serverType) {
         case 'client':
         case 'peer-server':
-            return pro.createSpi(args);
+            return Promise.resolve(pro.createSpi(args));
         case 'cloud':
+        case 'ion':
             return cloud.createSpi(args);
         default:
             throw new Error('unknown server type: ' + args.serverType);
     }
 }
 
-function connect(args) {
-    return shared.makeConnection(makeSpi(args), args);
+async function connect(args) {
+    let spi = await makeSpi(args);
+    let conn = await shared.makeConnection(spi, args);
+    return conn;
 }
 
-function listDatabases(args) {
-    let client = shared.makeClient(makeSpi(args));
-    return client.listDatabases(args);
+async function listDatabases(args) {
+    let spi = await makeSpi(args);
+    let client = await shared.makeClient(spi);
+    let dbs = await client.listDatabases(args);
+    return dbs;
 }
 
 const AVET = transit.keyword('avet');

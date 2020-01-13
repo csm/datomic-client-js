@@ -2,6 +2,7 @@
 
 let chans = require('./channel')
 let crypto = require('crypto');
+let http = require('http');
 let https = require('https');
 let tls = require('tls');
 let transit = require('transit-js');
@@ -67,7 +68,9 @@ function AnomalyError(anomaly) {
 AnomalyError.prototype = new Error;
 
 function isAnomaly(m) {
-    if (transit.isMap(m)) {
+    if (m == null) {
+        return false;
+    } else if (transit.isMap(m)) {
         return m.get(transit.keyword('cognitect.anomalies/category')) !== undefined
     } else if (typeof m == 'object') {
         return m['cognitect.anomalies/category'] !== undefined;
@@ -309,7 +312,7 @@ ExpBackoff.prototype.backOff = function () {
             setTimeout(() => { resolve(null); }, newValue);
         });
     } else {
-        return Promise.resolve(null);
+        return Promise.reject(new Error('retries exhausted'));
     }
 };
 
@@ -320,20 +323,20 @@ function LinearBackoff(timeout, count) {
 
 LinearBackoff.prototype.backOff = function() {
     this.count = this.count - 1;
-    if (this.count < 0) {
+    if (this.count > 0) {
         let to = this.timeout;
         return new Promise(resolve => {
             setTimeout(() => { resolve(null); }, to);
         });
     } else {
-        return Promise.resolve(null);
+        return Promise.reject(new Error('retries exhausted'));
     }
 };
 
 function sendWithRetry(httpRequest, requestContext, spi, timeout) {
-    let signParams = spi.getSignParams();
+    let signParams = spi.getSignParams(httpRequest, requestContext);
     if (signParams == null) {
-        signParams = spi.refreshSignParams();
+        signParams = spi.refreshSignParams(httpRequest, requestContext);
     } else {
         signParams = Promise.resolve(signParams);
     }
@@ -369,8 +372,11 @@ function doSendWithRetry(httpRequest, requestContext, spi, timeout, signParams, 
         signedRequest.timeout = timeout;
         signedRequest.ca = transactorTrust;
         signedRequest.checkServerIdentity = function(_, __) {};
+        if (spi.getAgent() != null) {
+            signedRequest.agent = spi.getAgent();
+        }
         return new Promise((resolve, reject) => {
-            let req = https.request(signedRequest, (response) => {
+            let cb = (response) => {
                 response.bodyData = '';
                 response.on('data', (chunk) => {
                     response.bodyData = response.bodyData + chunk;
@@ -378,7 +384,13 @@ function doSendWithRetry(httpRequest, requestContext, spi, timeout, signParams, 
                 response.on('end', () => {
                     resolve(response);
                 });
-            });
+            };
+            let req;
+            if (signedRequest.scheme === 'http') {
+                req = http.request(signedRequest, cb);
+            } else {
+                req = https.request(signedRequest, cb);
+            }
             req.on('timeout', () => {
                 reject(new AnomalyError({
                     'cognitect.anomalies/category': 'cognitect.anomalies/interrupted',
@@ -448,8 +460,20 @@ function doSendWithRetry(httpRequest, requestContext, spi, timeout, signParams, 
                 });
             } else if (cat === 'cognitect.anomalies/forbidden') {
                 return signParams.then((oldSignParams) => {
-                    return spi.refreshSignParams().then((newSignParams) => {
-                        if (newSignParams === oldSignParams) {
+                    return spi.refreshSignParams(httpRequest, requestContext).then((newSignParams) => {
+                        let equal = true;
+                        for (let k in newSignParams) {
+                            if (newSignParams.hasOwnProperty(k) && oldSignParams.hasOwnProperty(k)) {
+                                let v1 = newSignParams[k];
+                                let v2 = oldSignParams[k];
+                                if (v1 !== v2) {
+                                    equal = false;
+                                    break;
+                                }
+                            }
+                        }
+                        console.log('refrehed sign params', oldSignParams, newSignParams, equal);
+                        if (equal) {
                             throw error;
                         } else {
                             return doSendWithRetry(httpRequest, requestContext, spi, timeout, Promise.resolve(newSignParams), uBackoff, bBackoff);
@@ -484,8 +508,12 @@ function canonicalHeadersStr(headers) {
 }
 
 function canonicalRequestStr(request) {
+    let path = request.path;
+    if (path == null || path === '') {
+        path = '/';
+    }
     return request.method.toUpperCase() + '\n' +
-        '/\n' +  // path, always /
+        path + '\n' +
         '\n' +   // no query params
         canonicalHeadersStr(request.headers) + '\n' +
         signedHeaders.join(';') + '\n' +
@@ -506,11 +534,12 @@ function stringtoSign(xAmzDate, credentialScope, requestHash) {
 }
 
 function escapeAccessKeyId(accessKeyId) {
-    return accessKeyId.replace('/', '\\');
+    return accessKeyId.split('/').join('\\');
 }
+exports.escapeAccessKeyId = escapeAccessKeyId;
 
 function unescapeAccessKeyId(accessKeyId) {
-    return accessKeyId.replace('\\', '/');
+    return accessKeyId.split('\\').join('/');
 }
 
 function formatSignature(accessKeyId, credentialScope, signedHeaders, signature) {
@@ -602,7 +631,9 @@ function jsToTransit(m) {
 }
 
 function transitToJs(m) {
-    if (transit.isMap(m)) {
+    if (transit.isList(m)) {
+        return m.rep.map(transitToJs);
+    } else if (transit.isMap(m)) {
         let ret = {};
         m.forEach((v, k) => {
             k = transitToJs(k);
@@ -610,8 +641,6 @@ function transitToJs(m) {
             ret[k] = v;
         });
         return ret;
-    } else if (transit.isList(m)) {
-        m.rep.forEach(transitToJs);
     } else if (transit.isSet(m)) {
         let ret = [];
         m.forEach((v) => {
@@ -660,6 +689,7 @@ function clientResponseToApi(conn, op, requester, response) {
         case ':pull':
         case ':db-stats':
         case ':datomic.catalog/list-dbs':
+            console.log(response, response.get(keyword('result')));
             return transitToJs(response.get(keyword('result')));
         case ':with-db':
             return new Db(this, conn,
@@ -968,3 +998,5 @@ exports.makeClient = makeClient;
 exports.makeConnection = makeConnection;
 exports.makeUuid = makeUuid;
 exports.randomUuid = randomUuid;
+
+exports.canonicalRequestStr = canonicalRequestStr;

@@ -30,6 +30,8 @@ async function testq() {
         console.log('got query response:' + JSON.stringify(result));
     }
 }
+
+testq().then(_ => console.log('done'));
 ```
 
 ## Status
