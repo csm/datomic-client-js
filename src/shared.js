@@ -368,7 +368,6 @@ function retryAnom(category, op) {
 function doSendWithRetry(httpRequest, requestContext, spi, timeout, signParams, uBackoff, bBackoff) {
     let execRequest = function(signParams) {
         let signedRequest = signRequest(httpRequest, signParams);
-        console.log('signed request: ' + JSON.stringify(signedRequest));
         signedRequest.timeout = timeout;
         signedRequest.ca = transactorTrust;
         signedRequest.checkServerIdentity = function(_, __) {};
@@ -407,18 +406,11 @@ function doSendWithRetry(httpRequest, requestContext, spi, timeout, signParams, 
         });
     };
     let handleResponse = function(response) {
-        console.log('http status: ' + response.statusCode + ' headers:' + JSON.stringify(response.headers) +
-            ' bodyData: ' + response.bodyData);
         let reader = transit.reader('json');
         let body = null;
         if (response.headers['content-type'] === 'application/transit+json') {
-            try {
-                body = reader.read(response.bodyData);
-            } catch (err) {
-                console.log('error parsing body: ' + err);
-            }
+            body = reader.read(response.bodyData);
         }
-        console.log('read body:' + body);
         if (isAnomaly(body)) {
             throw new AnomalyError(body);
         } else if (response.statusCode >= 500) {
@@ -472,7 +464,6 @@ function doSendWithRetry(httpRequest, requestContext, spi, timeout, signParams, 
                                 }
                             }
                         }
-                        console.log('refrehed sign params', oldSignParams, newSignParams, equal);
                         if (equal) {
                             throw error;
                         } else {
@@ -604,7 +595,6 @@ function keywordizeKey(k) {
 
 const uuidPat = /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/;
 function jsToTransit(m) {
-    console.log('jsToTransit: ' + JSON.stringify(m));
     if (Array.isArray(m)) {
         return m.map(jsToTransit);
     } else if (m instanceof UUID) {
@@ -689,7 +679,6 @@ function clientResponseToApi(conn, op, requester, response) {
         case ':pull':
         case ':db-stats':
         case ':datomic.catalog/list-dbs':
-            console.log(response, response.get(keyword('result')));
             return transitToJs(response.get(keyword('result')));
         case ':with-db':
             return new Db(this, conn,
@@ -786,7 +775,6 @@ Client.prototype.connect = function(m) {
             (resolved) => {
                 return _this.asyncOp(null, keyword('status'), address, Object.assign({}, m, resolved)).then(
                     (status) => {
-                        console.log('connect done, resolved: ' + JSON.stringify(resolved) + ', status: ' + JSON.stringify(status));
                         return new Connection(_this, selectKeys(status, stateKeys), {dbName: m.dbName, databaseId: status.databaseId});
                     }
                 );
