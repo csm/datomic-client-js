@@ -1,3 +1,3 @@
 'use strict';
 
-module.exports = require('./src/client.js');
+module.exports = Object.assign({}, require('./src/client.js'), require('./src/query.js'));
