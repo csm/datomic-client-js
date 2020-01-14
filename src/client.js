@@ -20,15 +20,31 @@ function makeSpi(args) {
 
 async function connect(args) {
     let spi = await makeSpi(args);
-    let conn = await shared.makeConnection(spi, args);
-    return conn;
+    return await shared.makeConnection(spi, args);
 }
 
 async function listDatabases(args) {
     let spi = await makeSpi(args);
-    let client = await shared.makeClient(spi);
-    let dbs = await client.listDatabases(args);
-    return dbs;
+    let c = await shared.makeClient(spi);
+    return await c.listDatabases(args);
+}
+
+async function createDatabase(args) {
+    if (args.serverType === 'client' || args.serverType === 'peer-server') {
+        throw new Error('peer-server does not support createDatabase');
+    }
+    let spi = await makeSpi(args);
+    let c = await shared.makeClient(spi);
+    return c.createDatabase(args);
+}
+
+async function deleteDatabase(args) {
+    if (args.serverType === 'client' || args.serverType === 'peer-server') {
+        throw new Error('peer-server does not support createDatabase');
+    }
+    let spi = await makeSpi(args);
+    let c = await shared.makeClient(spi);
+    return c.deleteDatabase(args);
 }
 
 const AVET = transit.keyword('avet');
@@ -43,6 +59,8 @@ exports.VAET = VAET;
 
 exports.connect = connect;
 exports.listDatabases = listDatabases;
+exports.createDatabase = createDatabase;
+exports.deleteDatabase = deleteDatabase;
 
 exports.uuid = shared.makeUuid;
 exports.randomUuid = shared.randomUuid;

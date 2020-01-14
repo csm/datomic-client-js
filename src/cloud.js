@@ -84,7 +84,11 @@ Spi.prototype.addRouting = function (request) {
 Spi.prototype.getSignParams = function(request, address) {
     let baseKeyId = baseAccessKeyId(this.config, address, request);
     let res = this._cachedKeys[baseKeyId];
-    return res;
+    if (res != null) {
+        return signParams(this.config, res);
+    } else {
+        return null;
+    }
 };
 
 Spi.prototype.refreshSignParams = async function(request, address) {

@@ -177,6 +177,7 @@ Connection.prototype.advanceT = function(db) {
     if (thisT === undefined) {
         thisT = -1;
     }
+    db = transitToJs(db);
     if (db.t > thisT) {
         newState = selectKeys(db, stateKeys);
     }
@@ -692,14 +693,21 @@ function clientResponseToApi(conn, op, requester, response) {
 }
 
 function updateState(conn, response) {
-    let dbs = response.get(keyword('dbs'));
-    if (conn != null) {
-        if (dbs != null) {
-            dbs.forEach((db) => {
-                if (db.get(keyword('database-id')) === conn.databaseId) {
-                    conn.advanceT(db);
+    if (response != null) {
+        let dbs = response.get(keyword('dbs'));
+        let dbAfter = response.get(keyword('db-after'));
+        if (conn != null && conn.info != null) {
+            if (dbs != null) {
+                dbs.forEach((db) => {
+                    if (db.get(keyword('database-id')) === conn.info.databaseId) {
+                        conn.advanceT(db);
+                    }
+                });
+            } else if (dbAfter != null) {
+                if (dbAfter.get(keyword('database-id')) === conn.info.databaseId) {
+                    conn.advanceT(dbAfter);
                 }
-            });
+            }
         }
     }
 }
@@ -717,7 +725,11 @@ Client.prototype.asyncOp = function (conn, op, requester, m) {
     m = m || {};
     return sendWithRetry(routedHttpRequest, requestContext, this.spi, m.timeout || 60000).then(
         (result) => {
-            return convertResponse(conn, op, requester, result.body, clientResponseToApi);
+            let res = null;
+            if (result != null) {
+                res = result.body;
+            }
+            return convertResponse(conn, op, requester, res, clientResponseToApi);
         }
     );
 };
@@ -785,6 +797,14 @@ Client.prototype.connect = function(m) {
 
 Client.prototype.listDatabases = function(m) {
     return this.asyncOp(null, keyword('datomic.catalog/list-dbs'), m, null);
+};
+
+Client.prototype.createDatabase = function(m) {
+    return this.asyncOp(null, keyword('datomic.catalog/create-db'), m, {dbName: m.dbName});
+};
+
+Client.prototype.deleteDatabase = function(m) {
+    return this.asyncOp(null, keyword('datomic.catalog/delete-db'), m, {dbName: m.dbName});
 };
 
 function convertSelector(s) {
