@@ -3,7 +3,8 @@
   "version": "0.1.4",
   "description": "Client for Datomic Cloud and Peer Server",
   "scripts": {
-    "test": "mocha"
+    "test": "mocha",
+    "apidoc": "jsdoc -d docs src/channel.js src/client.js src/query.js src/tx.js src/shared.js"
   },
   "keywords": [
     "datomic"
@@ -18,7 +19,8 @@
     "uuid": "latest"
   },
   "devDependencies": {
-    "promise": "^8.0.3"
+    "promise": "~8.0.3",
+    "jsdoc": "~3.6.3"
   },
   "main": "index.js",
   "repository": {
