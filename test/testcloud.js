@@ -28,5 +28,5 @@ describe('cloud test suite', common.testSuite(
     async function() {
         let deleteResult = await client.deleteDatabase(config);
         assert.ok(deleteResult, 'delete database result');
-    }
+    }, config
 ));

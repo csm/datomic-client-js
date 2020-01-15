@@ -75,7 +75,7 @@ Channel.prototype.take = function() {
         let value = producer[0];
         let error = producer[1];
         let callback = producer[2];
-        callback();
+        callback(true);
         if (error != null) {
             return Promise.reject(error);
         } else {

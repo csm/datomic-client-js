@@ -53,7 +53,7 @@ function equiv(a1, a2) {
     }
 }
 
-function testSuite(beforeFn, afterFn) {
+function testSuite(beforeFn, afterFn, config) {
     return function() {
         this.timeout(30000);
         let connection = null;
@@ -64,6 +64,14 @@ function testSuite(beforeFn, afterFn) {
 
         after(async function() {
             afterFn();
+        });
+
+        describe("#listDatabases", function () {
+            it("lists databases", async function() {
+                let dbList = await client.listDatabases(config);
+                assert.ok(Array.isArray(dbList));
+                assert.ok(dbList.indexOf(config.dbName) >= 0);
+            })
         });
 
         describe('#queryScema()', function () {
@@ -99,6 +107,55 @@ function testSuite(beforeFn, afterFn) {
                 assert.ok(titles.indexOf('The Goonies') >= 0);
                 assert.ok(titles.indexOf('Commando') >= 0);
             });
+        });
+
+        describe("#datoms", function () {
+            it("reads eavt index", async function() {
+                let db = connection.db();
+                let chan = await db.datoms({index: client.EAVT, chunk: 10, limit: 100});
+                let chunkCount = 0;
+                let datomCount = 0;
+                let chunk = null;
+                while ((chunk = await chan.take()) != null) {
+                    chunkCount++;
+                    datomCount += chunk.length;
+                }
+                assert.equal(10, chunkCount);
+                assert.equal(100, datomCount);
+            });
+        });
+
+        describe("#indexRange", function () {
+            it("reads indexRange", async function() {
+                let db = connection.db();
+                let chan = await db.indexRange({
+                    attrid: 'movie/title'
+                });
+                let result = await chan.take();
+                assert.equal(3, result.length);
+            });
+        });
+
+        describe("#dbStats", function () {
+            it("reads database stats", async function() {
+                let db = connection.db();
+                let stats = await db.dbStats();
+                console.log('read db stats:', stats);
+                assert.equal('object', typeof stats);
+                assert.ok(stats.datoms != null);
+            });
+        });
+
+        describe("#txRange", function () {
+            it("reads tx range", async function () {
+                let chan = await connection.txRange({});
+                let result = null;
+                let count = 0;
+                while ((result = await chan.take()) != null) {
+                    count++;
+                }
+                assert.ok(count > 0);
+            })
         });
     }
 }

@@ -195,7 +195,7 @@ Db.prototype.asOf = function(t) {
  *  datoms.
  */
 Db.prototype.datoms = function (m) {
-    return this.client.chunkedAsyncOp(this.client, this.conn, keyword('datoms'), this, m);
+    return this.client.chunkedAsyncOp(this.conn, keyword('datoms'), this, m);
 };
 
 /**
@@ -836,6 +836,14 @@ function transitToJs(m) {
         return new BigInt(m.rep);
     } else if (transit.isBigDec(m)) {
         return new BigDec(m.rep);
+    } else if (transit.isTaggedValue(m) && m.tag === 'datom') {
+        return {
+            e: transitToJs(m.rep[0]),
+            a: transitToJs(m.rep[1]),
+            v: transitToJs(m.rep[2]),
+            tx: transitToJs(m.rep[3]),
+            added: transitToJs(m.rep[4])
+        };
     } else {
         return m;
     }
@@ -859,6 +867,7 @@ function clientResponseToApi(conn, op, requester, response) {
         case ':q':
         case ':tx-range':
         case ':index-range':
+        case ':next':
             return transitToJs(response.get(keyword('data')));
         case ':pull':
         case ':db-stats':
@@ -924,18 +933,20 @@ function convertChunkedResponse(conn, op, requester, response, handler, spi, req
         if (result) {
             let nextOffset = response.get(keyword('next-offset'));
             if (nextOffset != null) {
+                let nextOp = keyword('next');
                 let nextRequest = Object.assign({}, requestContext,
                     {
-                        op: keyword('next'),
-                        nextToken: response.get(keyword(nextToken)),
+                        op: nextOp,
+                        nextToken: response.get(keyword('next-token')),
                         offset: nextOffset,
-                        chunk: response.get(keyword(chunk))
+                        chunk: response.get(keyword('chunk'))
                     });
-                let nextClientRequest = apiToClientRequest(op, requester, nextRequest);
-                let nextRoutedRequest = spi.addRouting(nextClientRequest);
+                let nextClientRequest = apiToClientRequest(nextOp, requester, nextRequest);
+                let nextHttpRequest = clientRequestToHttpRequest(nextClientRequest);
+                let nextRoutedRequest = spi.addRouting(nextHttpRequest);
                 return sendWithRetry(nextRoutedRequest, requestContext, spi, timeout || 60000).then(
                     (result) => {
-                        convertChunkedResponse(conn, 'next', requester, result, handler, spi, requestContext, timeout, channel);
+                        convertChunkedResponse(conn, nextOp, requester, result.body, handler, spi, requestContext, timeout, channel);
                     }
                 );
             } else {
@@ -1054,7 +1065,7 @@ function apiToClientRequest(op, requester, m) {
             throw Error('invalid request');
         }
     } else if (op.toString() === ':datoms') {
-        if (['eavt', 'aevt', 'avet', 'vaet'].indexOf(m.index) === -1) {
+        if ([':eavt', ':aevt', ':avet', ':vaet', 'eavt', 'aevt', 'avet', 'vaet'].indexOf(m.index.toString()) === -1) {
             throw Error('invalid request');
         }
     }
@@ -1096,21 +1107,73 @@ function apiToClientRequest(op, requester, m) {
             ]);
             break;
         case ':datoms':
+            let index = keyword(m.index);
             let comps = m.components;
             if (comps !== undefined) {
-                comps = transit.list(comps.map(
-                    function (v) {
-                        if (typeof v == 'string' && v[0] === ':') {
-                            return transit.keyword(v.slice(1));
-                        } else {
-                            return v;
+                let comps2 = new Array(comps.length);
+                switch (index.toString()) {
+                    case ':eavt':
+                        switch (comps.length) {
+                            case 4:
+                                comps2[3] = tx.bigInt(comps[3]);
+                            case 3:
+                                comps2[2] = tx.convertV(comps[2]);
+                            case 2:
+                                comps2[1] = keyword(comps[1]);
+                            case 1:
+                                comps2[0] = tx.convertE(comps[0]);
+                            default:
+                                break;
                         }
-                    }
-                ));
+                        break;
+                    case ':aevt':
+                        switch (comps.length) {
+                            case 4:
+                                comps2[3] = tx.bigInt(comps[3]);
+                            case 3:
+                                comps2[2] = tx.convertV(comps[2]);
+                            case 2:
+                                comps2[1] = tx.convertE(comps[1]);
+                            case 1:
+                                comps2[0] = keyword(comps[0]);
+                            default:
+                        }
+                        break;
+                    case ':avet':
+                        switch (comps.length) {
+                            case 4:
+                                comps2[3] = tx.bigInt(comps[3]);
+                            case 3:
+                                comps2[2] = tx.convertE(comps[2]);
+                            case 2:
+                                comps2[1] = tx.convertV(comps[1]);
+                            case 1:
+                                comps2[0] = keyword(comps[0]);
+                            default:
+                        }
+                        break;
+                    case ':vaet':
+                        switch (comps.length) {
+                            case 4:
+                                comps2[3] = tx.bigInt(comps[3]);
+                            case 3:
+                                comps2[2] = tx.convertE(comps[2]);
+                            case 2:
+                                comps2[1] = keyword(comps[1]);
+                            case 1:
+                                comps2[0] = tx.convertE(comps[0]);
+                            default:
+                        }
+                        break;
+                }
             }
             request = transit.map([
-                transit.keyword('index'), transit.keyword(m.index),
-                transit.keyword('components'), comps
+                keyword('index'), keyword(m.index),
+                keyword('components'), comps,
+                keyword('timeout'), m.timeout || 60000,
+                keyword('chunk'), m.chunk || 1000,
+                keyword('limit'), m.limit || 1000,
+                keyword('offset'), m.offset || 0,
             ]);
             break;
         case ':index-range':
@@ -1127,6 +1190,9 @@ function apiToClientRequest(op, requester, m) {
                 keyword('selector'), query.convertSelector(m.selector),
                 keyword('timeout', m.timeout || 60000)
             ]);
+            break;
+        case ':next':
+            request = jsToTransit(m);
             break;
     }
     request.set(keyword('op'), keyword(op));

@@ -193,7 +193,11 @@ function symbol(s) {
  * @returns {UUID} The UUID.
  */
 function uuid(s) {
-    return new shared.UUID(s);
+    if (s instanceof shared.UUID) {
+        return s;
+    } else {
+        return new shared.UUID(s);
+    }
 }
 
 /**
@@ -203,7 +207,11 @@ function uuid(s) {
  * @returns {shared.BigInt} The big int.
  */
 function bigInt(s) {
-    return new shared.BigInt(s);
+    if (s instanceof shared.BigInt) {
+        return s;
+    } else {
+        return new shared.BigInt(s);
+    }
 }
 
 /**
@@ -213,7 +221,11 @@ function bigInt(s) {
  * @returns {BigDec} The big decimal.
  */
 function bigDec(s) {
-    return new shared.BigDec(s);
+    if (s instanceof shared.BigDec) {
+        return s;
+    } else {
+        return new shared.BigDec(s);
+    }
 }
 
 exports.TxBuilder = TxBuilder;
@@ -223,3 +235,4 @@ exports.uuid = uuid;
 exports.bigInt = bigInt;
 exports.bigDec = bigDec;
 exports.convertE = convertE;
+exports.convertV = convertV;

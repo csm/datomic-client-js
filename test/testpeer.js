@@ -128,17 +128,22 @@ describe('peer-server test suite', common.testSuite(
         await createDb();
         peerServerProc = await peerServer();
         let connection = await client.connect(config);
-        await connection.transact({txData: schema});
+        let schema2 = Array.from(schema);
+        schema2[0].set(transit.keyword('db/index'), true);
+        await connection.transact({txData: schema2});
         return connection;
     },
     async function() {
         await deleteDb();
+        console.log('deleted database');
         if (peerServerProc != null) {
             if (!peerServerProc.kill()) {
                 console.log('kill failed, kill this program yourself');
             }
+            setTimeout(() => peerServerProc.kill(9), 5000);
+            setTimeout(() => process.exit(0), 10000);
         } else {
             console.log('no proc to kill, kill this program yourself');
         }
-    }
+    }, config
 ));
