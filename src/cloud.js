@@ -95,7 +95,7 @@ Spi.prototype.refreshSignParams = async function(request, address) {
     let baseKeyId = baseAccessKeyId(this.config, address, request);
     let parsedKeyId = parseAccessKeyId(baseKeyId);
     if (parsedKeyId != null) {
-        let keyfile = await getKeyFile(parsedKeyId.keyfileName);
+        let keyfile = await getKeyFile(this.config, parsedKeyId.keyfileName);
         let creds = currentCreds(parsedKeyId, keyfile);
         if (creds != null) {
             this._cachedKeys[baseKeyId] = creds;
@@ -152,8 +152,8 @@ function parseAccessKeyId(s) {
     }
 }
 
-async function getKeyFile(s3url) {
-    let s3 = new aws.S3();
+async function getKeyFile(config, s3url) {
+    let s3 = new aws.S3({region: config.region});
     let u = url.parse(s3url);
     let request = {
         Bucket: u.hostname,
