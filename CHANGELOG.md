@@ -1,5 +1,11 @@
 # Change Log
 
+## 0.1.5 (January 14, 2020).
+
+* Add transaction builder.
+* Properly use region when accessing S3 for cloud.
+* Add more API docs.
+
 ## 0.1.4 (January 14, 2020).
 
 * Add some basic tests against both cloud and peer-server.

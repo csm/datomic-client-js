@@ -4,6 +4,8 @@
 
 Work in progress!
 
+[API docs](https://csm.github.io/datomic-client-js/)
+
 A JavaScript (node, maybe browser) client for [Datomic](https://datomic.com)
 peer server and (eventually) cloud.
 
