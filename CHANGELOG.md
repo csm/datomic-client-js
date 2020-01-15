@@ -1,5 +1,9 @@
 # Change Log
 
+## 0.1.6 (January 14, 2020).
+
+* Fixes for datoms call, chunked API calls.
+
 ## 0.1.5 (January 14, 2020).
 
 * Add transaction builder.
