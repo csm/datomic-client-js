@@ -97,11 +97,13 @@ client.connect(cloudConf).then(async function(connection) {
 * SPI support for on-prem peer-server.
 * SPI support for cloud.
 * Some query builder support complete.
+* Some transaction builder support complete.
+* EDN queries or transaction data supported.
+* Some tests written.
 
 ## TODO
 
 * More builder support for queries.
-* Add builder support for transactions?
 * API docs.
-* Package everything properly for external consumption.
-* Uh, tests?
+* Package everything properly for external consumption (i.e. I don't really know how to package up JavaScript).
+* More tests.
