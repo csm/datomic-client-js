@@ -1101,7 +1101,7 @@ function apiToClientRequest(op, requester, m) {
             throw Error('invalid request');
         }
     } else if (op.toString() === ':pull') {
-        if (m.eid !== undefined || m.selector !== undefined) {
+        if (m.eid == null || m.selector == null) {
             throw Error('invalid request');
         }
     } else if (op.toString() === ':datoms') {
@@ -1226,7 +1226,7 @@ function apiToClientRequest(op, requester, m) {
         case ':pull':
             request = transit.map([
                 keyword('eid'), tx.convertE(m.eid),
-                keyword('selector'), query.convertSelector(m.selector),
+                keyword('selector'), jsToTransit(m.selector),
                 keyword('timeout', m.timeout || 60000)
             ]);
             break;

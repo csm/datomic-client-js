@@ -153,6 +153,25 @@ function testSuite(beforeFn, afterFn, config) {
                 assert.ok(count > 0);
             })
         });
+
+        describe("#pull", function() {
+            it("pulls data from the DB", async function() {
+                let db = connection.db();
+                let chan = await connection.q({
+                    query: edn`[:find ?id :in $ ?title :where [?id :movie/title ?title]]`,
+                    args: [db, 'Repo Man']
+                });
+                let result = await chan.take();
+                let id = result[0][0];
+                let pulled = await db.pull({
+                    eid: id,
+                    selector: edn`[:movie/title :movie/genre :movie/release-year]`
+                });
+                assert.equal('Repo Man', pulled['movie/title']);
+                assert.equal('punk dystopia', pulled['movie/genre']);
+                assert.equal(1984, pulled['movie/release-year']);
+            });
+        });
     }
 }
 

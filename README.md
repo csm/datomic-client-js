@@ -71,12 +71,23 @@ client.connect(cloudConf).then(async function(connection) {
     await connection.transact({txData: testData});
 
     // Query the database
-    let query = edn`[:find ?title
+    let query = edn`[:find ?movie ?title
                      :in $ ?year
                      :where [?movie :movie/release-year ?year]
                      [?movie :movie/title ?title]]`;
     let db = connection.db();
-    return await connection.q({query: query, args: [db, 1985]});
+    // Chunked operations (q, indexRange, datoms, txRange) return a channel that yields
+    // promises of async values.
+    let chan = await connection.q({query: query, args: [db, 1985]});
+    let result = await chan.take();
+    
+    // Pull an entity
+    let id = result[0][0];
+    let pulled = await db.pull({
+        eid: id,
+        selector: edn`[:movie/title :movie/genre :movie/release-year]`    
+    });
+    return pulled;
 });
 ```
 
