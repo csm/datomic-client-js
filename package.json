@@ -16,7 +16,8 @@
     "npm": "^6.13.6",
     "socks-proxy-agent": "4.0.2",
     "transit-js": "0.8.861",
-    "uuid": "latest"
+    "uuid": "latest",
+    "jsedn": "~0.4.1"
   },
   "devDependencies": {
     "promise": "~8.0.3",

@@ -6,6 +6,7 @@ let child_process = require('child_process');
 let net = require('net');
 let uuid = require('uuid');
 let common = require('./common');
+let jsedn = require('jsedn');
 
 const dbName = 'movies-test-' + uuid.v4();
 const accessKey = 'test';
@@ -128,8 +129,9 @@ describe('peer-server test suite', common.testSuite(
         await createDb();
         peerServerProc = await peerServer();
         let connection = await client.connect(config);
-        let schema2 = Array.from(schema);
-        schema2[0].set(transit.keyword('db/index'), true);
+        let schema2 = jsedn.parse(jsedn.encode(schema));
+        schema2.val[0].keys.push(jsedn.parse(':db/index'));
+        schema2.val[0].vals.push(true);
         await connection.transact({txData: schema2});
         return connection;
     },

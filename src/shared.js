@@ -4,14 +4,30 @@ let chans = require('./channel');
 let crypto = require('crypto');
 let http = require('http');
 let https = require('https');
-let tls = require('tls');
+let jsedn = require('jsedn');
+let query = require('./query.js');
 let transit = require('transit-js');
 let uuid = require('uuid');
-let query = require('./query.js');
 let tx = require('./tx.js');
 
-Object.prototype.getState = function() { return this; };
-Object.prototype.getRequestContext = function() { return this; };
+function getState(v) {
+    if (v instanceof Db || v instanceof Connection) {
+        return v.getState();
+    } else {
+        return v;
+    }
+}
+
+function getRequestContext(v) {
+    if (v instanceof Db || v instanceof Connection) {
+        return v.getRequestContext();
+    } else {
+        return v;
+    }
+}
+
+const uuidTag = new jsedn.Tag('uuid');
+jsedn.setTagAction(uuidTag, (v) => new jsedn.Tagged(uuidTag, v));
 
 /**
  * A wrapper around a UUID value.
@@ -363,7 +379,7 @@ Connection.prototype.recentDb = function () {
  * @returns {Db} The database.
  */
 Connection.prototype.db = function () {
-    return new Db(this.client, this, this.getRequestContext());
+    return new Db(this.client, this, getRequestContext(this));
 };
 
 Connection.prototype.log = function () {
@@ -488,7 +504,7 @@ function ExpBackoff(start, max, factor) {
     this.max = max;
 }
 
-ExpBackoff.prototype.backOff = function () {
+ExpBackoff.prototype.backOff = function(error) {
     let newValue = this.value * this.factor;
     this.value = newValue;
     if (newValue < this.max) {
@@ -496,7 +512,7 @@ ExpBackoff.prototype.backOff = function () {
             setTimeout(() => { resolve(null); }, newValue);
         });
     } else {
-        return Promise.reject(new Error('retries exhausted'));
+        return Promise.reject(error);
     }
 };
 
@@ -505,7 +521,7 @@ function LinearBackoff(timeout, count) {
     this.count = count;
 }
 
-LinearBackoff.prototype.backOff = function() {
+LinearBackoff.prototype.backOff = function(error) {
     this.count = this.count - 1;
     if (this.count > 0) {
         let to = this.timeout;
@@ -513,7 +529,7 @@ LinearBackoff.prototype.backOff = function() {
             setTimeout(() => { resolve(null); }, to);
         });
     } else {
-        return Promise.reject(new Error('retries exhausted'));
+        return Promise.reject(error);
     }
 };
 
@@ -631,7 +647,7 @@ function doSendWithRetry(httpRequest, requestContext, spi, timeout, signParams, 
         if (error instanceof AnomalyError) {
             let cat = error.anomaly['cognitect.anomalies/category'];
             if (cat === 'cognitect.anomalies/busy') {
-                bBackoff.backOff().then(() => {
+                bBackoff.backOff(error).then(() => {
                     return doSendWithRetry(httpRequest, requestContext, spi, timeout, signParams, uBackoff, bBackoff);
                 });
             } else if (cat === 'cognitect.anomalies/forbidden') {
@@ -656,7 +672,7 @@ function doSendWithRetry(httpRequest, requestContext, spi, timeout, signParams, 
                     });
                 });
             } else if (retryAnom(cat, httpRequest.op)) {
-                uBackoff.backOff().then(() => {
+                uBackoff.backOff(error).then(() => {
                     return doSendWithRetry(httpRequest, requestContext, spi, timeout, signParams, uBackoff, bBackoff);
                 });
             } else {
@@ -789,6 +805,30 @@ function jsToTransit(m) {
         return transit.bigDec(m.rep);
     } else if (m instanceof Db) {
         return jsToTransit(m.toQueryArg());
+    } else if (m instanceof jsedn.Map) {
+        let ret = transit.map();
+        m.each((v, k) => {
+            ret.set(jsToTransit(k), jsToTransit(v));
+        });
+        return ret;
+    } else if (m instanceof jsedn.List) {
+        return transit.list(m.val.map(jsToTransit));
+    } else if (m instanceof jsedn.Set) {
+        return transit.set(m.val.map(jsToTransit));
+    } else if (m instanceof jsedn.Vector) {
+        return m.val.map(jsToTransit);
+    } else if (m instanceof jsedn.Tagged) {
+        if (m.tag() === uuidTag) {
+            return transit.uuid(m.obj());
+        } else {
+            throw new Error(`can't convert tagged value '${m.dn()}' to transit`)
+        }
+    } else if (m instanceof jsedn.Keyword) {
+        return transit.keyword(m.val.slice(1));
+    } else if (m instanceof jsedn.Symbol) {
+        return transit.symbol(m.val);
+    } else if (m instanceof jsedn.BigInt) {
+        return transit.bigInt(m.val);
     } else if (transit.isTaggedValue(m) || transit.isKeyword(m) || transit.isSymbol(m)) {
         return m;
     } else if (typeof m == 'object') {
@@ -855,10 +895,10 @@ function clientResponseToApi(conn, op, requester, response) {
         case ':with':
             return {
                 dbBefore: new Db(this, conn,
-                                 Object.assign({}, selectKeys(requester.getRequestContext(), ['databaseId', 'dbName']),
+                                 Object.assign({}, selectKeys(getRequestContext(requester), ['databaseId', 'dbName']),
                                                selectKeys(transitToJs(response.get(keyword('db-before'))), dbContextKeys))),
                 dbAfter: new Db(this, conn,
-                                Object.assign({}, selectKeys(requester.getRequestContext(), ['databaseId', 'dbName']),
+                                Object.assign({}, selectKeys(getRequestContext(requester), ['databaseId', 'dbName']),
                                               selectKeys(transitToJs(response.get(keyword('db-after'))), dbContextKeys))),
                 txData: transitToJs(response.get(keyword('tx-data'))),
                 tempids: transitToJs(response.get(keyword('tempids')))
@@ -875,7 +915,7 @@ function clientResponseToApi(conn, op, requester, response) {
             return transitToJs(response.get(keyword('result')));
         case ':with-db':
             return new Db(this, conn,
-                Object.assign({}, requester.getRequestContext(), selectKeys(transitToJs(response), dbContextKeys)));
+                Object.assign({}, getRequestContext(requester), selectKeys(transitToJs(response), dbContextKeys)));
         case ':datomic.catalog/create-db':
         case ':datomic.catalog/delete-db':
             return true;
@@ -910,7 +950,7 @@ function convertResponse(conn, op, requester, response, handler) {
 }
 
 Client.prototype.asyncOp = function (conn, op, requester, m) {
-    let requestContext = requester.getRequestContext();
+    let requestContext = getRequestContext(requester);
     let request = apiToClientRequest(op, requestContext, m);
     let httpRequest = clientRequestToHttpRequest(request);
     let routedHttpRequest = this.spi.addRouting(httpRequest);
@@ -958,7 +998,7 @@ function convertChunkedResponse(conn, op, requester, response, handler, spi, req
 
 Client.prototype.chunkedAsyncOp = function (conn, op, requester, m) {
     let channel = new chans.Channel();
-    let requestContext = requester.getRequestContext();
+    let requestContext = getRequestContext(requester);
     let request = apiToClientRequest(op, requestContext, m);
     let httpRequest = clientRequestToHttpRequest(request);
     let routedHttpRequest = this.spi.addRouting(httpRequest);
@@ -1057,7 +1097,7 @@ function apiToClientRequest(op, requester, m) {
             throw Error('invalid request');
         }
     } else if (op.toString() === ':transact' || op.toString() === ':with') {
-        if (!Array.isArray(m.txData)) {
+        if (!Array.isArray(m.txData) && !(m.txData instanceof jsedn.Vector)) {
             throw Error('invalid request');
         }
     } else if (op.toString() === ':pull') {
@@ -1085,9 +1125,8 @@ function apiToClientRequest(op, requester, m) {
             break;
         case ':transact':
         case ':with':
-            // fixme, need to pass keywords to transact in tx-data...
             request = transit.map([transit.keyword('tx-id'), transit.uuid(uuid.v4()),
-                                   transit.keyword('tx-data'), m.txData]);
+                                   transit.keyword('tx-data'), jsToTransit(m.txData)]);
             break;
         case ':q':
             request = transit.map([
@@ -1196,7 +1235,7 @@ function apiToClientRequest(op, requester, m) {
             break;
     }
     request.set(keyword('op'), keyword(op));
-    let requestContext = requester.getRequestContext();
+    let requestContext = getRequestContext(requester);
     for (let k in requestContext) {
         if (requestContext.hasOwnProperty(k)) {
             request.set(keywordizeKey(k), requestContext[k]);

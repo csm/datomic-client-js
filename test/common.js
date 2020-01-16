@@ -1,48 +1,38 @@
 let client = require('../index.js');
 let assert = require('assert');
 
-const schema = new client.TxBuilder().txData(
-    {
-        'db/ident': 'movie/title',
-        'db/valueType': 'db.type/string',
-        'db/cardinality': 'db.cardinality/one',
-        'db/doc': 'The title of the movie'
-    },
-    {
-        'db/ident': 'movie/genre',
-        'db/valueType': 'db.type/string',
-        'db/cardinality': 'db.cardinality/one',
-        'db/doc': 'The genre of the movie'
-    },
-    {
-        'db/ident': 'movie/release-year',
-        'db/valueType': 'db.type/long',
-        'db/cardinality': 'db.cardinality/one',
-        'db/doc': 'The year the movie was released in theaters'
-    }
-).build();
+let edn = client.edn;
 
-const testData = new client.TxBuilder().txData(
-    {
-        'movie/title': "The Goonies",
-        'movie/genre': "action/adventure",
-        'movie/release-year': 1985
-    },
-    {
-        'movie/title': "Commando",
-        'movie/genre': "thriller/action",
-        'movie/release-year': 1985
-    },
-    {
-        'movie/title': "Repo Man",
-        'movie/genre': "punk dystopia",
-        'movie/release-year': 1984
-    }
-).build();
+const schema = edn`
+[{:db/ident :movie/title,
+  :db/valueType :db.type/string,
+  :db/cardinality :db.cardinality/one,
+  :db/doc "The title of the movie"},
+ {:db/ident :movie/genre,
+  :db/valueType :db.type/string,
+  :db/cardinality :db.cardinality/one,
+  :db/doc "The genre of the movie"},
+ {:db/ident :movie/release-year,
+  :db/valueType :db.type/long,
+  :db/cardinality :db.cardinality/one,
+  :db/doc "The year the movie was released in theaters"}]
+`;
+
+const testData = edn`
+[{:movie/title "The Goonies",
+  :movie/genre "action/adventure",
+  :movie/release-year 1985},
+ {:movie/title "Commando",
+  :movie/genre "thriller/action",
+  :movie/release-year 1985},
+ {:movie/title "Repo Man",
+  :movie/genre "punk dystopia",
+  :movie/release-year 1984}]
+`;
 
 function equiv(a1, a2) {
     if (Array.isArray(a1) && Array.isArray(a2) && a1.length === a2.length) {
-        for (let i in a1) {
+        for (let i = 0; i < a1.length; i++) {
             if (a1[i] !== a2[i]) {
                 return false;
             }
@@ -55,7 +45,7 @@ function equiv(a1, a2) {
 
 function testSuite(beforeFn, afterFn, config) {
     return function() {
-        this.timeout(30000);
+        this.timeout(60000);
         let connection = null;
 
         before(async function () {
@@ -76,7 +66,10 @@ function testSuite(beforeFn, afterFn, config) {
 
         describe('#queryScema()', function () {
             it('reads the schema', async function () {
-                let query = new client.QueryBuilder().find('?id', '?doc').in('$').where(['?e', 'db/ident', '?id'], ['?e', 'db/doc', '?doc']).build();
+                let query = edn`
+                [:find ?id ?doc
+                 :in $
+                 :where [?e :db/ident ?id] [?e :db/doc ?doc]]`;
                 let db = connection.db();
                 let chan = await connection.q({query: query, args: [db]});
                 let result = await chan.take();
@@ -92,7 +85,10 @@ function testSuite(beforeFn, afterFn, config) {
                 let result = await connection.transact({txData: testData});
                 let db = connection.db();
                 let chan = await connection.q({
-                    query: new client.QueryBuilder().find('?title').in('$', '?year').where(['?movie', 'movie/release-year', '?year'], ['?movie', 'movie/title', '?title']).build(),
+                    query: edn`
+                    [:find ?title
+                     :in $ ?year
+                     :where [?movie :movie/release-year ?year] [?movie :movie/title ?title]]`,
                     args: [db, 1985]
                 });
                 let titles85 = await chan.take();
