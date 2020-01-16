@@ -1,5 +1,10 @@
 # Change Log
 
+## 0.1.7 (January 15, 2020).
+
+* Add EDN support for queries, transaction data, and pull selectors.
+* Fix pull.
+
 ## 0.1.6 (January 14, 2020).
 
 * Fixes for datoms call, chunked API calls.
