@@ -27,12 +27,13 @@ let cloudConf = {
     serverType: 'cloud',
     region: 'your-region',
     system: 'your-system',
+    dbName: 'your-db-name',
     proxyPort: 8182  // if connecting via the bastion server
 };
 
 let client = require('datomic-client-js');
 
-// List databases
+// List databases, you can omit dbName from config
 client.listDatabases(cloudConf).then((dbs) => `${dbs}`);
 
 // Create database (cloud only)
