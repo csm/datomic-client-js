@@ -32,14 +32,30 @@ let chans = require('./channel');
 let crypto = require('crypto');
 let http = require('http');
 let https = require('https');
-let tls = require('tls');
+let jsedn = require('jsedn');
+let query = require('./query.js');
 let transit = require('transit-js');
 let uuid = require('uuid');
-let query = require('./query.js');
 let tx = require('./tx.js');
 
-Object.prototype.getState = function() { return this; };
-Object.prototype.getRequestContext = function() { return this; };
+function getState(v) {
+    if (v instanceof Db || v instanceof Connection) {
+        return v.getState();
+    } else {
+        return v;
+    }
+}
+
+function getRequestContext(v) {
+    if (v instanceof Db || v instanceof Connection) {
+        return v.getRequestContext();
+    } else {
+        return v;
+    }
+}
+
+const uuidTag = new jsedn.Tag('uuid');
+jsedn.setTagAction(uuidTag, (v) => new jsedn.Tagged(uuidTag, v));
 
 /**
  * A wrapper around a UUID value.
@@ -223,7 +239,7 @@ Db.prototype.asOf = function(t) {
  *  datoms.
  */
 Db.prototype.datoms = function (m) {
-    return this.client.chunkedAsyncOp(this.client, this.conn, keyword('datoms'), this, m);
+    return this.client.chunkedAsyncOp(this.conn, keyword('datoms'), this, m);
 };
 
 /**
@@ -391,7 +407,7 @@ Connection.prototype.recentDb = function () {
  * @returns {Db} The database.
  */
 Connection.prototype.db = function () {
-    return new Db(this.client, this, this.getRequestContext());
+    return new Db(this.client, this, getRequestContext(this));
 };
 
 Connection.prototype.log = function () {
@@ -516,7 +532,7 @@ function ExpBackoff(start, max, factor) {
     this.max = max;
 }
 
-ExpBackoff.prototype.backOff = function () {
+ExpBackoff.prototype.backOff = function(error) {
     let newValue = this.value * this.factor;
     this.value = newValue;
     if (newValue &lt; this.max) {
@@ -524,7 +540,7 @@ ExpBackoff.prototype.backOff = function () {
             setTimeout(() => { resolve(null); }, newValue);
         });
     } else {
-        return Promise.reject(new Error('retries exhausted'));
+        return Promise.reject(error);
     }
 };
 
@@ -533,7 +549,7 @@ function LinearBackoff(timeout, count) {
     this.count = count;
 }
 
-LinearBackoff.prototype.backOff = function() {
+LinearBackoff.prototype.backOff = function(error) {
     this.count = this.count - 1;
     if (this.count > 0) {
         let to = this.timeout;
@@ -541,7 +557,7 @@ LinearBackoff.prototype.backOff = function() {
             setTimeout(() => { resolve(null); }, to);
         });
     } else {
-        return Promise.reject(new Error('retries exhausted'));
+        return Promise.reject(error);
     }
 };
 
@@ -659,7 +675,7 @@ function doSendWithRetry(httpRequest, requestContext, spi, timeout, signParams, 
         if (error instanceof AnomalyError) {
             let cat = error.anomaly['cognitect.anomalies/category'];
             if (cat === 'cognitect.anomalies/busy') {
-                bBackoff.backOff().then(() => {
+                bBackoff.backOff(error).then(() => {
                     return doSendWithRetry(httpRequest, requestContext, spi, timeout, signParams, uBackoff, bBackoff);
                 });
             } else if (cat === 'cognitect.anomalies/forbidden') {
@@ -684,7 +700,7 @@ function doSendWithRetry(httpRequest, requestContext, spi, timeout, signParams, 
                     });
                 });
             } else if (retryAnom(cat, httpRequest.op)) {
-                uBackoff.backOff().then(() => {
+                uBackoff.backOff(error).then(() => {
                     return doSendWithRetry(httpRequest, requestContext, spi, timeout, signParams, uBackoff, bBackoff);
                 });
             } else {
@@ -817,6 +833,30 @@ function jsToTransit(m) {
         return transit.bigDec(m.rep);
     } else if (m instanceof Db) {
         return jsToTransit(m.toQueryArg());
+    } else if (m instanceof jsedn.Map) {
+        let ret = transit.map();
+        m.each((v, k) => {
+            ret.set(jsToTransit(k), jsToTransit(v));
+        });
+        return ret;
+    } else if (m instanceof jsedn.List) {
+        return transit.list(m.val.map(jsToTransit));
+    } else if (m instanceof jsedn.Set) {
+        return transit.set(m.val.map(jsToTransit));
+    } else if (m instanceof jsedn.Vector) {
+        return m.val.map(jsToTransit);
+    } else if (m instanceof jsedn.Tagged) {
+        if (m.tag() === uuidTag) {
+            return transit.uuid(m.obj());
+        } else {
+            throw new Error(`can't convert tagged value '${m.dn()}' to transit`)
+        }
+    } else if (m instanceof jsedn.Keyword) {
+        return transit.keyword(m.val.slice(1));
+    } else if (m instanceof jsedn.Symbol) {
+        return transit.symbol(m.val);
+    } else if (m instanceof jsedn.BigInt) {
+        return transit.bigInt(m.val);
     } else if (transit.isTaggedValue(m) || transit.isKeyword(m) || transit.isSymbol(m)) {
         return m;
     } else if (typeof m == 'object') {
@@ -864,6 +904,16 @@ function transitToJs(m) {
         return new BigInt(m.rep);
     } else if (transit.isBigDec(m)) {
         return new BigDec(m.rep);
+    } else if (transit.isTaggedValue(m) &amp;&amp; m.tag === 'datom') {
+        return {
+            e: transitToJs(m.rep[0]),
+            a: transitToJs(m.rep[1]),
+            v: transitToJs(m.rep[2]),
+            tx: transitToJs(m.rep[3]),
+            added: transitToJs(m.rep[4])
+        };
+    } else if (transit.isInteger(m) &amp;&amp; typeof m !== 'number') {
+        return new BigInt(m.toString());
     } else {
         return m;
     }
@@ -875,10 +925,10 @@ function clientResponseToApi(conn, op, requester, response) {
         case ':with':
             return {
                 dbBefore: new Db(this, conn,
-                                 Object.assign({}, selectKeys(requester.getRequestContext(), ['databaseId', 'dbName']),
+                                 Object.assign({}, selectKeys(getRequestContext(requester), ['databaseId', 'dbName']),
                                                selectKeys(transitToJs(response.get(keyword('db-before'))), dbContextKeys))),
                 dbAfter: new Db(this, conn,
-                                Object.assign({}, selectKeys(requester.getRequestContext(), ['databaseId', 'dbName']),
+                                Object.assign({}, selectKeys(getRequestContext(requester), ['databaseId', 'dbName']),
                                               selectKeys(transitToJs(response.get(keyword('db-after'))), dbContextKeys))),
                 txData: transitToJs(response.get(keyword('tx-data'))),
                 tempids: transitToJs(response.get(keyword('tempids')))
@@ -887,6 +937,7 @@ function clientResponseToApi(conn, op, requester, response) {
         case ':q':
         case ':tx-range':
         case ':index-range':
+        case ':next':
             return transitToJs(response.get(keyword('data')));
         case ':pull':
         case ':db-stats':
@@ -894,7 +945,7 @@ function clientResponseToApi(conn, op, requester, response) {
             return transitToJs(response.get(keyword('result')));
         case ':with-db':
             return new Db(this, conn,
-                Object.assign({}, requester.getRequestContext(), selectKeys(transitToJs(response), dbContextKeys)));
+                Object.assign({}, getRequestContext(requester), selectKeys(transitToJs(response), dbContextKeys)));
         case ':datomic.catalog/create-db':
         case ':datomic.catalog/delete-db':
             return true;
@@ -929,7 +980,7 @@ function convertResponse(conn, op, requester, response, handler) {
 }
 
 Client.prototype.asyncOp = function (conn, op, requester, m) {
-    let requestContext = requester.getRequestContext();
+    let requestContext = getRequestContext(requester);
     let request = apiToClientRequest(op, requestContext, m);
     let httpRequest = clientRequestToHttpRequest(request);
     let routedHttpRequest = this.spi.addRouting(httpRequest);
@@ -952,18 +1003,20 @@ function convertChunkedResponse(conn, op, requester, response, handler, spi, req
         if (result) {
             let nextOffset = response.get(keyword('next-offset'));
             if (nextOffset != null) {
+                let nextOp = keyword('next');
                 let nextRequest = Object.assign({}, requestContext,
                     {
-                        op: keyword('next'),
-                        nextToken: response.get(keyword(nextToken)),
+                        op: nextOp,
+                        nextToken: response.get(keyword('next-token')),
                         offset: nextOffset,
-                        chunk: response.get(keyword(chunk))
+                        chunk: response.get(keyword('chunk'))
                     });
-                let nextClientRequest = apiToClientRequest(op, requester, nextRequest);
-                let nextRoutedRequest = spi.addRouting(nextClientRequest);
+                let nextClientRequest = apiToClientRequest(nextOp, requester, nextRequest);
+                let nextHttpRequest = clientRequestToHttpRequest(nextClientRequest);
+                let nextRoutedRequest = spi.addRouting(nextHttpRequest);
                 return sendWithRetry(nextRoutedRequest, requestContext, spi, timeout || 60000).then(
                     (result) => {
-                        convertChunkedResponse(conn, 'next', requester, result, handler, spi, requestContext, timeout, channel);
+                        convertChunkedResponse(conn, nextOp, requester, result.body, handler, spi, requestContext, timeout, channel);
                     }
                 );
             } else {
@@ -975,7 +1028,7 @@ function convertChunkedResponse(conn, op, requester, response, handler, spi, req
 
 Client.prototype.chunkedAsyncOp = function (conn, op, requester, m) {
     let channel = new chans.Channel();
-    let requestContext = requester.getRequestContext();
+    let requestContext = getRequestContext(requester);
     let request = apiToClientRequest(op, requestContext, m);
     let httpRequest = clientRequestToHttpRequest(request);
     let routedHttpRequest = this.spi.addRouting(httpRequest);
@@ -1074,15 +1127,15 @@ function apiToClientRequest(op, requester, m) {
             throw Error('invalid request');
         }
     } else if (op.toString() === ':transact' || op.toString() === ':with') {
-        if (!Array.isArray(m.txData)) {
+        if (!Array.isArray(m.txData) &amp;&amp; !(m.txData instanceof jsedn.Vector)) {
             throw Error('invalid request');
         }
     } else if (op.toString() === ':pull') {
-        if (m.eid !== undefined || m.selector !== undefined) {
+        if (m.eid == null || m.selector == null) {
             throw Error('invalid request');
         }
     } else if (op.toString() === ':datoms') {
-        if (['eavt', 'aevt', 'avet', 'vaet'].indexOf(m.index) === -1) {
+        if ([':eavt', ':aevt', ':avet', ':vaet', 'eavt', 'aevt', 'avet', 'vaet'].indexOf(m.index.toString()) === -1) {
             throw Error('invalid request');
         }
     }
@@ -1102,9 +1155,8 @@ function apiToClientRequest(op, requester, m) {
             break;
         case ':transact':
         case ':with':
-            // fixme, need to pass keywords to transact in tx-data...
             request = transit.map([transit.keyword('tx-id'), transit.uuid(uuid.v4()),
-                                   transit.keyword('tx-data'), m.txData]);
+                                   transit.keyword('tx-data'), jsToTransit(m.txData)]);
             break;
         case ':q':
             request = transit.map([
@@ -1124,21 +1176,73 @@ function apiToClientRequest(op, requester, m) {
             ]);
             break;
         case ':datoms':
+            let index = keyword(m.index);
             let comps = m.components;
             if (comps !== undefined) {
-                comps = transit.list(comps.map(
-                    function (v) {
-                        if (typeof v == 'string' &amp;&amp; v[0] === ':') {
-                            return transit.keyword(v.slice(1));
-                        } else {
-                            return v;
+                let comps2 = new Array(comps.length);
+                switch (index.toString()) {
+                    case ':eavt':
+                        switch (comps.length) {
+                            case 4:
+                                comps2[3] = tx.bigInt(comps[3]);
+                            case 3:
+                                comps2[2] = tx.convertV(comps[2]);
+                            case 2:
+                                comps2[1] = keyword(comps[1]);
+                            case 1:
+                                comps2[0] = tx.convertE(comps[0]);
+                            default:
+                                break;
                         }
-                    }
-                ));
+                        break;
+                    case ':aevt':
+                        switch (comps.length) {
+                            case 4:
+                                comps2[3] = tx.bigInt(comps[3]);
+                            case 3:
+                                comps2[2] = tx.convertV(comps[2]);
+                            case 2:
+                                comps2[1] = tx.convertE(comps[1]);
+                            case 1:
+                                comps2[0] = keyword(comps[0]);
+                            default:
+                        }
+                        break;
+                    case ':avet':
+                        switch (comps.length) {
+                            case 4:
+                                comps2[3] = tx.bigInt(comps[3]);
+                            case 3:
+                                comps2[2] = tx.convertE(comps[2]);
+                            case 2:
+                                comps2[1] = tx.convertV(comps[1]);
+                            case 1:
+                                comps2[0] = keyword(comps[0]);
+                            default:
+                        }
+                        break;
+                    case ':vaet':
+                        switch (comps.length) {
+                            case 4:
+                                comps2[3] = tx.bigInt(comps[3]);
+                            case 3:
+                                comps2[2] = tx.convertE(comps[2]);
+                            case 2:
+                                comps2[1] = keyword(comps[1]);
+                            case 1:
+                                comps2[0] = tx.convertE(comps[0]);
+                            default:
+                        }
+                        break;
+                }
             }
             request = transit.map([
-                transit.keyword('index'), transit.keyword(m.index),
-                transit.keyword('components'), comps
+                keyword('index'), keyword(m.index),
+                keyword('components'), comps,
+                keyword('timeout'), m.timeout || 60000,
+                keyword('chunk'), m.chunk || 1000,
+                keyword('limit'), m.limit || 1000,
+                keyword('offset'), m.offset || 0,
             ]);
             break;
         case ':index-range':
@@ -1152,13 +1256,16 @@ function apiToClientRequest(op, requester, m) {
         case ':pull':
             request = transit.map([
                 keyword('eid'), tx.convertE(m.eid),
-                keyword('selector'), query.convertSelector(m.selector),
+                keyword('selector'), jsToTransit(m.selector),
                 keyword('timeout', m.timeout || 60000)
             ]);
             break;
+        case ':next':
+            request = jsToTransit(m);
+            break;
     }
     request.set(keyword('op'), keyword(op));
-    let requestContext = requester.getRequestContext();
+    let requestContext = getRequestContext(requester);
     for (let k in requestContext) {
         if (requestContext.hasOwnProperty(k)) {
             request.set(keywordizeKey(k), requestContext[k]);
@@ -1239,7 +1346,7 @@ exports.BigDec = BigDec;</code></pre>
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 3.6.3</a> on Tue Jan 14 2020 21:20:36 GMT-0800 (PST)
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 3.6.3</a> on Thu Jan 16 2020 11:43:27 GMT-0800 (PST)
 </footer>
 
 <script> prettyPrint(); </script>

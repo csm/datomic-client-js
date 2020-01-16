@@ -6,6 +6,8 @@ let shared = require('./shared.js');
 /**
  * A transaction builder.
  *
+ * @deprecated Use EDN template strings instead.
+ *
  * @constructor TxBuilder
  */
 function TxBuilder() {

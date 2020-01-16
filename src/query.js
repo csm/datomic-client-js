@@ -8,6 +8,8 @@ let transit = require('transit-js');
  * specify transit.Keyword and transit.Symbol values in your query,
  * which is verbose and cumbersome.
  *
+ * @deprecated Use EDN template strings instead.
+ *
  * @constructor QueryBuilder
  */
 function QueryBuilder() {
