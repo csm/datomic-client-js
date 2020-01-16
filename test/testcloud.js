@@ -21,6 +21,8 @@ describe('cloud test suite', common.testSuite(
     async function(schema) {
         let createResult = await client.createDatabase(config);
         assert.ok(createResult, 'create database result');
+        // wait for the database to be created, so we can connect.
+        await new Promise(resolve => setTimeout(() => resolve(null), 1000));
         let connection = await client.connect(config);
         await connection.transact({txData: schema});
         return connection;

@@ -25,6 +25,8 @@ function convertE(e) {
         return transit.bigInt(e.rep);
     } else if (Array.isArray(e) && e.length === 2) {
         return [transit.keyword(e[0]), convertV(e[1])];
+    } else if (transit.isInteger(e)) {
+        return e;
     } else {
         throw new Error('failed to convert value to entity: ' + e);
     }

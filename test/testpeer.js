@@ -108,7 +108,7 @@ async function peerServer() {
     let run = path.resolve(datomicProHome, 'bin', 'run');
     return new Promise((resolve, reject) => {
         let args = ['-m', 'datomic.peer-server', '-h', '127.0.0.1', '-p', port.toString(), '-a', accessKey + ',' + secret, '-d', dbName + ',datomic:dev://localhost:4334/' + dbName];
-        let proc = child_process.spawn(run, args, {env: {'JAVA_HOME': javaHome}}, (err, stdout, stderr) => {
+        let proc = child_process.spawn(run, args, {env: {'JAVA_HOME': javaHome}, detached: true}, (err, stdout, stderr) => {
             if (err) {
                 console.log('failed to launch peer server output:', stdout, 'error:', stderr);
                 reject(err);
@@ -139,11 +139,7 @@ describe('peer-server test suite', common.testSuite(
         await deleteDb();
         console.log('deleted database');
         if (peerServerProc != null) {
-            if (!peerServerProc.kill()) {
-                console.log('kill failed, kill this program yourself');
-            }
-            setTimeout(() => peerServerProc.kill(9), 5000);
-            setTimeout(() => process.exit(0), 10000);
+            process.kill(-peerServerProc.pid);
         } else {
             console.log('no proc to kill, kill this program yourself');
         }

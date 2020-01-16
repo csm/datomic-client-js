@@ -884,6 +884,8 @@ function transitToJs(m) {
             tx: transitToJs(m.rep[3]),
             added: transitToJs(m.rep[4])
         };
+    } else if (transit.isInteger(m) && typeof m !== 'number') {
+        return new BigInt(m.toString());
     } else {
         return m;
     }
