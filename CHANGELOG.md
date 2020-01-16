@@ -1,5 +1,9 @@
 # Change Log
 
+## 0.1.9 (January 16, 2020).
+
+* Handle EDN strings with template variables properly.
+
 ## 0.1.8 (January 15, 2020).
 
 * Fix handling of `goog.math.Long` that transit-js may return.
