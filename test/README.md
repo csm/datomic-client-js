@@ -9,7 +9,8 @@ You will pass information about your setup to the test runner via environment va
 
 * CLOUD_SYSTEM: your Datomic Cloud system name.
 * CLOUD_REGION: your Datomic Cloud AWS region.
-* CLOUD_PROXY_PORT: your Datomic Cloud socks proxy port (usually, 8182).
+* CLOUD_ENDPOINT: your Datomic Cloud public endpoint.
+* CLOUD_PROXY_PORT: your Datomic Cloud socks proxy port (usually, 8182). Omit this if you connect with CLOUD_ENDPOINT.
 * DATOMIC_PRO_HOME: the absolute path to the Datomic Pro distribution (there should be a file `${DATOMIC_PRO_HOME}/bin/run`).
 * JAVA_HOME: set to your Java installation directory (must be a Java version supported by your Datomic version, usually Java 8).
 

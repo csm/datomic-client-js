@@ -7,6 +7,13 @@ let SocksProxyAgent = require('socks-proxy-agent');
 let transit = require('transit-js');
 let url = require('url');
 
+let debug;
+if (process.env.DATOMIC_CLIENT_JS_DEBUG === 'true') {
+    debug = console.log;
+} else {
+    debug = () => {};
+}
+
 function createAccessKeyIdForType(args) {
     if (args.type === 'admin') {
         return args.prefix + '/' + args.system + '/datomic/access/admin/' + args.keyName;
@@ -72,6 +79,7 @@ function Spi(config, routingMap, agent) {
     this.routingMap = routingMap;
     this._cachedKeys = {};
     this.agent = agent;
+    this.serverType = 'cloud';
 }
 
 Spi.prototype.addRouting = function (request) {
@@ -84,6 +92,7 @@ Spi.prototype.addRouting = function (request) {
 Spi.prototype.getSignParams = function(request, address) {
     let baseKeyId = baseAccessKeyId(this.config, address, request);
     let res = this._cachedKeys[baseKeyId];
+    debug('getSignParams', baseKeyId, res);
     if (res != null) {
         return signParams(this.config, res);
     } else {
@@ -111,6 +120,11 @@ Spi.prototype.refreshSignParams = async function(request, address) {
 Spi.prototype.getAgent = function () {
     return this.agent;
 };
+
+Spi.prototype.usePrivateTrustAnchor = function () {
+    let u = new url.URL(this.config.endpoint);
+    return u.protocol === 'http:';
+}
 
 let shared = require('./shared');
 function signParams(config, creds) {
@@ -153,11 +167,12 @@ function parseAccessKeyId(s) {
 }
 
 async function getKeyFile(config, s3url) {
+    debug('getKeyFile', config, s3url);
     let s3 = new aws.S3({region: config.region});
-    let u = url.parse(s3url);
+    let u = new url.URL(s3url);
     let request = {
         Bucket: u.hostname,
-        Key: u.path.replace(/^\/+/, '')
+        Key: u.pathname.replace(/^\/+/, '')
     };
     let result = await s3.getObject(request).promise();
     let reader = transit.reader('json');
@@ -169,7 +184,8 @@ const DEFAULT_HTTPS_PORT = 443;
 
 function parseEndpoint(s) {
     if (s != null) {
-        let uri = url.parse(s);
+        let uri = new url.URL(s);
+        debug('parseEndpoint', s, uri);
         let protocol;
         if (uri.protocol === 'http:') {
             protocol = 'http';
@@ -177,10 +193,10 @@ function parseEndpoint(s) {
             protocol = 'https';
         }
         let port = uri.port;
-        if (port == null) {
-            if (uri.protocol === 'http') {
+        if (port == null || port === '') {
+            if (uri.protocol === 'http:') {
                 port = DEFAULT_HTTP_PORT;
-            } else if (uri.protocol === 'https') {
+            } else if (uri.protocol === 'https:') {
                 port = DEFAULT_HTTPS_PORT;
             }
         } else {
@@ -237,6 +253,7 @@ function getS3AuthPath(request, agent) {
 }
 
 async function createSpi(args) {
+    debug('createSpi', args);
     args = Object.assign({}, args, {endpointMap: parseEndpoint(args.endpoint)});
     let agent = null;
     if (args.proxyPort != null) {
@@ -247,6 +264,7 @@ async function createSpi(args) {
         });
     }
     let s3Path = await getS3AuthPath(Object.assign({}, args.endpointMap,{method: 'get', path: '/'}), agent);
+    debug('s3path:', s3Path);
     let spiArgs = Object.assign(args, {s3AuthPath: 's3://' + s3Path});
     spiArgs.endpointMap.path = '/api';
     return new Spi(spiArgs, spiArgs.endpointMap, agent);

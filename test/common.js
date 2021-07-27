@@ -94,11 +94,11 @@ function testSuite(beforeFn, afterFn, config) {
                 let titles85 = await chan.take();
                 console.log('query result:', titles85);
                 assert.ok(Array.isArray(titles85));
-                assert.equal(2, titles85.length);
+                assert.strictEqual(2, titles85.length);
                 assert.ok(Array.isArray(titles85[0]));
                 assert.ok(Array.isArray(titles85[1]));
-                assert.equal(1, titles85[0].length);
-                assert.equal(1, titles85[1].length);
+                assert.strictEqual(1, titles85[0].length);
+                assert.strictEqual(1, titles85[1].length);
                 let titles = titles85.map(v => { return v[0]; });
                 assert.ok(titles.indexOf('The Goonies') >= 0);
                 assert.ok(titles.indexOf('Commando') >= 0);
@@ -116,8 +116,8 @@ function testSuite(beforeFn, afterFn, config) {
                     chunkCount++;
                     datomCount += chunk.length;
                 }
-                assert.equal(10, chunkCount);
-                assert.equal(100, datomCount);
+                assert.strictEqual(10, chunkCount);
+                assert.strictEqual(100, datomCount);
             });
         });
 
@@ -128,7 +128,7 @@ function testSuite(beforeFn, afterFn, config) {
                     attrid: 'movie/title'
                 });
                 let result = await chan.take();
-                assert.equal(3, result.length);
+                assert.strictEqual(3, result.length);
             });
         });
 
@@ -137,7 +137,7 @@ function testSuite(beforeFn, afterFn, config) {
                 let db = connection.db();
                 let stats = await db.dbStats();
                 console.log('read db stats:', stats);
-                assert.equal('object', typeof stats);
+                assert.strictEqual('object', typeof stats);
                 assert.ok(stats.datoms != null);
             });
         });
@@ -167,9 +167,9 @@ function testSuite(beforeFn, afterFn, config) {
                     eid: id,
                     selector: edn`[:movie/title :movie/genre :movie/release-year]`
                 });
-                assert.equal('Repo Man', pulled['movie/title']);
-                assert.equal('punk dystopia', pulled['movie/genre']);
-                assert.equal(1984, pulled['movie/release-year']);
+                assert.strictEqual('Repo Man', pulled['movie/title']);
+                assert.strictEqual('punk dystopia', pulled['movie/genre']);
+                assert.strictEqual(1984, pulled['movie/release-year']);
             });
         });
     }

@@ -6,16 +6,25 @@ let common = require('./common.js');
 const dbName = 'movies-test-' + uuid.v4();
 const system = process.env.CLOUD_SYSTEM;
 const region = process.env.CLOUD_REGION;
-const proxyPort = Number.parseInt(process.env.CLOUD_PROXY_PORT);
+let proxyPort = -1;
+if (process.env.CLOUD_PROXY_PORT != null) {
+    proxyPort = Number.parseInt(process.env.CLOUD_PROXY_PORT);
+}
+let endpoint = `http://entry.${system}.${region}.datomic.net:8182/`;
+if (process.env.CLOUD_ENDPOINT != null) {
+    endpoint = process.env.CLOUD_ENDPOINT;
+}
 
 const config = {
     serverType: 'cloud',
-    endpoint: 'http://entry.' + system + '.' + region + '.datomic.net:8182/',
+    endpoint: endpoint,
     system: system,
     region: region,
     dbName: dbName,
-    proxyPort: proxyPort
 };
+if (proxyPort != -1) {
+    config.proxyPort = proxyPort;
+}
 
 describe('cloud test suite', common.testSuite(
     async function(schema) {

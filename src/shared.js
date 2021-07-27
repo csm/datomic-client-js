@@ -312,6 +312,17 @@ function Connection(client, state, info, refreshInterval, lastRefresh) {
     this.lastRefresh = lastRefresh;
 }
 
+function get_in(m, ...ks) {
+    let ret = m;
+    for (const k of ks) {
+        ret = ret[k];
+        if (ret == null) {
+            break;
+        }
+    }
+    return ret;
+}
+
 Connection.prototype.advanceT = function(db) {
     let newState = this.state;
     let thisT = this.state.t;
@@ -349,6 +360,10 @@ Connection.prototype.getRequestContext = function () {
 Connection.prototype.getState = function() {
     return this.state;
 };
+
+Connection.prototype.getServerType = function() {
+    return get_in(this, ['client', 'spi', 'serverType']);
+}
 
 /**
  * Sync with the most recent transaction on the server, and return
@@ -569,8 +584,10 @@ function doSendWithRetry(httpRequest, requestContext, spi, timeout, signParams, 
     let execRequest = function(signParams) {
         let signedRequest = signRequest(httpRequest, signParams);
         signedRequest.timeout = timeout;
-        signedRequest.ca = transactorTrust;
-        signedRequest.checkServerIdentity = function(_, __) {};
+        if (spi.usePrivateTrustAnchor()) {
+            signedRequest.ca = transactorTrust;
+            signedRequest.checkServerIdentity = function(_, __) {};
+        }
         if (spi.getAgent() != null) {
             signedRequest.agent = spi.getAgent();
         }

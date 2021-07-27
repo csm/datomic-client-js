@@ -133,6 +133,7 @@ describe('peer-server test suite', common.testSuite(
         schema2.val[0].keys.push(jsedn.parse(':db/index'));
         schema2.val[0].vals.push(true);
         await connection.transact({txData: schema2});
+        assert.strictEqual(connection.getServerType(), 'peer-server');
         return connection;
     },
     async function() {

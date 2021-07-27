@@ -19,6 +19,7 @@ function routingMap(endpoint) {
 function Spi(signingMap, routingMap) {
     this.signingMap = signingMap;
     this.routingMap = routingMap;
+    this.serverType = 'peer-server';
 }
 
 Spi.prototype.addRouting = function(request) {
@@ -39,6 +40,10 @@ Spi.prototype.refreshSignParams = function() {
 Spi.prototype.getAgent = function() {
     return null;
 };
+
+Spi.prototype.usePrivateTrustAnchor = function () {
+    return false;
+}
 
 function createSpi(args) {
     if (args.accessKey != null && args.endpoint != null) {

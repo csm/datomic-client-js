@@ -1,6 +1,6 @@
 {
   "name": "datomic-client-js",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "Client for Datomic Cloud and Peer Server",
   "scripts": {
     "test": "mocha",
@@ -13,15 +13,15 @@
   "license": "Apache-2.0",
   "dependencies": {
     "aws-sdk": "2.599.0",
+    "jsedn": "~0.4.1",
     "npm": "^6.13.6",
     "socks-proxy-agent": "4.0.2",
     "transit-js": "0.8.861",
-    "uuid": "latest",
-    "jsedn": "~0.4.1"
+    "uuid": "latest"
   },
   "devDependencies": {
-    "promise": "~8.0.3",
-    "jsdoc": "~3.6.3"
+    "jsdoc": "~3.6.3",
+    "promise": "~8.0.3"
   },
   "main": "index.js",
   "repository": {
