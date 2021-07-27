@@ -1,6 +1,6 @@
 {
   "name": "datomic-client-js",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "Client for Datomic Cloud and Peer Server",
   "scripts": {
     "test": "mocha",
