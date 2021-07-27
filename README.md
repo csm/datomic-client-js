@@ -23,13 +23,15 @@ let peerConf = {
 
 // cloud config map example
 let cloudConf = {
-    endpoint: 'http://entry.your-system-name.your-region.datomic.net:8182/',
+    endpoint: 'https://your-apigateway-url',
     serverType: 'cloud',
     region: 'your-region',
     system: 'your-system',
     dbName: 'your-db-name',
-    proxyPort: 8182  // if connecting via the bastion server
 };
+// Can also still set endpoint to a private datomic.net URL,
+// and set proxyPort if using an older Datomic cloud release
+// with a proxy server for access.
 
 let client = require('datomic-client-js');
 
