@@ -362,7 +362,7 @@ Connection.prototype.getState = function() {
 };
 
 Connection.prototype.getServerType = function() {
-    return get_in(this, ['client', 'spi', 'serverType']);
+    return get_in(this, 'client', 'spi', 'serverType');
 }
 
 /**

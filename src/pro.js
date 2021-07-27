@@ -42,7 +42,7 @@ Spi.prototype.getAgent = function() {
 };
 
 Spi.prototype.usePrivateTrustAnchor = function () {
-    return false;
+    return true;
 }
 
 function createSpi(args) {

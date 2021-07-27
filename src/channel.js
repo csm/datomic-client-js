@@ -44,6 +44,9 @@ Channel.prototype.close = function() {
     this.producers.forEach(p => {
         p[2](false);
     });
+    this.consumers.forEach(c => {
+        c[0](null);
+    });
 };
 
 /**
