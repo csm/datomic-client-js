@@ -1,5 +1,9 @@
 # Change Log
 
+## 0.1.11 (January 9, 2026).
+
+* Update aws-sdk dependency version.
+
 ## 0.1.9 (January 16, 2020).
 
 * Handle EDN strings with template variables properly.
