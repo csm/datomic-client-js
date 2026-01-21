@@ -10,8 +10,8 @@ jobs:
 
     strategy:
       matrix:
-        # Mocha 11 requires Node.js >= 18.18.0
-        node-version: ['18.18.0', '20.x', '22.x']
+        # Node 18 EOL is April 2025; supporting Node 20+ only
+        node-version: ['20.x', '22.x']
 
     steps:
       - uses: actions/checkout@v4
