@@ -1,3 +1,4 @@
 node_modules/
-.idea/.clj-kondo/
+.idea/
+.clj-kondo/
 .lsp/

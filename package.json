@@ -12,15 +12,15 @@
   "author": "Casey Marshall",
   "license": "Apache-2.0",
   "dependencies": {
-    "aws-sdk": "2.1693.0",
+    "aws-sdk": "^1.18.0",
     "jsedn": "~0.4.1",
-    "mocha": "^11.7.5",
+    "mocha": "^11.3.0",
     "npm": "^11.7.0",
     "socks-proxy-agent": "8.0.5",
     "transit-js": "0.8.861"
   },
   "devDependencies": {
-    "jsdoc": "~3.6.3",
+    "jsdoc": "^4.0.5",
     "promise": "~8.0.3"
   },
   "main": "index.js",
