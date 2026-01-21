@@ -53,6 +53,8 @@ jobs:
 
       - name: Publish to NPM with provenance
         run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Push version commit and tag
         run: git push --follow-tags
