@@ -45,7 +45,7 @@ function equiv(a1, a2) {
 
 function testSuite(beforeFn, afterFn, config) {
     return function() {
-        this.timeout(60000);
+        this.timeout(300000); // 5 minutes - longer than individual wait timeouts so we get their error messages
         let connection = null;
 
         before(async function () {
