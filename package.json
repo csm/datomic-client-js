@@ -16,7 +16,7 @@
     "jsedn": "~0.4.1",
     "mocha": "^11.7.5",
     "npm": "^11.7.0",
-    "socks-proxy-agent": "4.0.2",
+    "socks-proxy-agent": "8.0.5",
     "transit-js": "0.8.861"
   },
   "devDependencies": {
