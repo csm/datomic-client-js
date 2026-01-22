@@ -12,7 +12,7 @@
   "author": "Casey Marshall",
   "license": "Apache-2.0",
   "dependencies": {
-    "aws-sdk": "^1.18.0",
+    "aws-sdk": "^2.1693.0",
     "jsedn": "~0.4.1",
     "mocha": "^11.3.0",
     "npm": "^11.7.0",
